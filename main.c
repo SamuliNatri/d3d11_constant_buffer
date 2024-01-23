@@ -32,11 +32,20 @@
 typedef uint32_t U32;
 typedef float    F32;
 
+typedef struct { 
+    float m[4][4]; 
+} Matrix;
+
+typedef struct {
+	Matrix model;
+} D3D11Constants;
+
 // Globals.
 
 U32 client_width;
 U32 client_height;
 
+ID3D11Buffer *constant_buffer;
 ID3D11Device *device;
 ID3D11DeviceContext *context;
 ID3D11RenderTargetView *render_target_view;
@@ -313,6 +322,20 @@ WinMain(HINSTANCE instance, HINSTANCE p_instance, LPSTR cmd, int cmd_show) {
     hr =  ID3D11Device1_CreateSamplerState(device, &sampler_desc, &sampler_state);
     AssertHR(hr);
     
+    // Constant buffer.
+    
+    D3D11_BUFFER_DESC constant_buffer_desc = {
+        .ByteWidth = sizeof(D3D11Constants),
+        .Usage = D3D11_USAGE_DYNAMIC,
+        .BindFlags = D3D11_BIND_CONSTANT_BUFFER,
+        .CPUAccessFlags = D3D11_CPU_ACCESS_WRITE,
+    };
+    
+    hr =
+        ID3D11Device1_CreateBuffer(device, &constant_buffer_desc, 
+                                   NULL, &constant_buffer);
+    AssertHR(hr);
+    
     // Loop.
     
     for(;;) {
@@ -329,7 +352,7 @@ WinMain(HINSTANCE instance, HINSTANCE p_instance, LPSTR cmd, int cmd_show) {
         ID3D11DeviceContext1_ClearRenderTargetView(context, render_target_view, color);
         ID3D11DeviceContext1_RSSetViewports(context, 1, &viewport);
         ID3D11DeviceContext1_OMSetRenderTargets(context, 1, &render_target_view, NULL);
-        
+        ID3D11DeviceContext1_VSSetConstantBuffers(context, 0, 1, &constant_buffer);
         ID3D11DeviceContext1_PSSetShaderResources(context, 0, 1, &shader_resource_view);
         ID3D11DeviceContext1_PSSetSamplers(context, 0, 1, &sampler_state);
         
@@ -338,6 +361,25 @@ WinMain(HINSTANCE instance, HINSTANCE p_instance, LPSTR cmd, int cmd_show) {
         ID3D11DeviceContext1_PSSetShader(context, ps, 0, 0);
         ID3D11DeviceContext1_IASetPrimitiveTopology(context, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         ID3D11DeviceContext1_IASetVertexBuffers(context, 0, 1, &buffer, &stride, &offset);
+        
+        // Constants.
+        
+        D3D11_MAPPED_SUBRESOURCE mapped_subresource;
+        
+        ID3D11DeviceContext1_Map(context, 
+                                 (ID3D11Resource *)constant_buffer, 
+                                 0, D3D11_MAP_WRITE_DISCARD, 
+                                 0, &mapped_subresource);
+        D3D11Constants *constants = (D3D11Constants *)mapped_subresource.pData;
+        
+        constants->model = (Matrix){
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            1.0f, 0.0f, 0.0f, 1.0f
+        };
+        
+        ID3D11DeviceContext1_Unmap(context, (ID3D11Resource *)constant_buffer, 0);
         
         // Draw.
         
